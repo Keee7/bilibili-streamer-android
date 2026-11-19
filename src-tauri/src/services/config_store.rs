@@ -1,7 +1,7 @@
 use crate::models::config::AppConfig;
 use anyhow::Result;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct ConfigStore {
     path: PathBuf,
@@ -9,10 +9,14 @@ pub struct ConfigStore {
 }
 
 impl ConfigStore {
+    #[cfg(desktop)]
     pub fn new() -> Result<Self> {
         let dir = directories::ProjectDirs::from("com", "bilibili-streamer", "Bilibili-Streamer")
             .ok_or_else(|| anyhow::anyhow!("Failed to get project dirs"))?;
-        let config_dir = dir.config_dir();
+        Self::in_directory(dir.config_dir())
+    }
+
+    pub fn in_directory(config_dir: &Path) -> Result<Self> {
         fs::create_dir_all(config_dir)?;
         let path = config_dir.join("config.toml");
 

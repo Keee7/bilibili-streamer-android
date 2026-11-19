@@ -46,10 +46,11 @@ pub async fn update_area(
 pub async fn start_live(
     p_name: Option<String>,
     s_name: Option<String>,
+    expected_uid: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<StartLiveResponse, String> {
     LiveSession::new(&state)
-        .start_live(p_name, s_name)
+        .start_live(p_name, s_name, expected_uid)
         .await
         .map_err(|e| e.to_string())
 }

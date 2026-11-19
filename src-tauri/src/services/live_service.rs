@@ -84,26 +84,23 @@ impl LiveService {
         let res = api.start_live(room_id_num, area_id, &csrf).await?;
         let code = res["code"].as_i64().unwrap_or(-1);
 
-        if code == 60024 {
-            let qr = res["data"]["qr"].as_str().unwrap_or("").to_string();
+        if matches!(code, 60024 | 60043) {
+            let qr = res["data"]["qr"]
+                .as_str()
+                .filter(|url| !url.is_empty())
+                .map(str::to_owned)
+                .or_else(|| {
+                    if code != 60043 {
+                        return None;
+                    }
+                    session.uid.map(|mid| format!(
+                        "https://www.bilibili.com/blackboard/live/face-auth-middle.html?source_event=400&mid={mid}"
+                    ))
+                });
             return Ok(StartLiveResponse {
-                code: 60024,
+                code: code as i32,
                 data: None,
-                qr: Some(qr),
-                msg: None,
-            });
-        }
-
-        if code == 60043 {
-            let mid = session.uid.unwrap_or(0);
-            let qr = format!(
-                "https://www.bilibili.com/blackboard/live/face-auth-middle.html?source_event=400&mid={}",
-                mid
-            );
-            return Ok(StartLiveResponse {
-                code: 60043,
-                data: None,
-                qr: Some(qr),
+                qr,
                 msg: None,
             });
         }

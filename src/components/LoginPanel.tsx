@@ -127,7 +127,7 @@ export default function LoginPanel({ onClose }: LoginPanelProps) {
 			/>
 			<div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
 				<div
-					className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
+					className="relative w-72 max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] overflow-y-auto p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
 					onClick={(e) => e.stopPropagation()}
 				>
 					<button

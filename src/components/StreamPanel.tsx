@@ -1,6 +1,8 @@
-import { Copy, X } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
-import { useEffect, useRef, useState } from "react";
+import { Copy } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import FaceVerificationDialog, {
+	type FaceVerification,
+} from "@/components/FaceVerificationDialog";
 import { useLive, useUI, useUser } from "@/context/AppContext";
 import {
 	getPartitions,
@@ -9,7 +11,11 @@ import {
 	updateArea,
 	updateTitle,
 } from "@/hooks/useTauri";
-import type { StreamProtocolType, UserConfig } from "@/types/api";
+import type {
+	StreamCodeData,
+	StreamProtocolType,
+	UserConfig,
+} from "@/types/api";
 
 const PROTOCOL_OPTIONS: { value: StreamProtocolType; label: string }[] = [
 	{ value: "rtmp1", label: "RTMP" },
@@ -32,8 +38,10 @@ export default function StreamPanel() {
 	const [partitions, setPartitions] = useState<Record<string, string[]>>({});
 	const [parentArea, setParentArea] = useState("");
 	const [subArea, setSubArea] = useState("");
-	const [faceQrUrl, setFaceQrUrl] = useState<string | null>(null);
-	const facePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const [verification, setVerification] = useState<FaceVerification | null>(
+		null,
+	);
+	const [starting, setStarting] = useState(false);
 
 	// Keep confirmed title/area in user context so remounting this panel (e.g. tab switch) doesn't revert to stale values.
 	const syncSavedStreamInfo = (
@@ -45,9 +53,7 @@ export default function StreamPanel() {
 	};
 
 	useEffect(() => {
-		if (user?.last_title) {
-			setTitle(user.last_title);
-		}
+		setTitle(user?.last_title ?? "");
 	}, [user?.last_title]);
 
 	useEffect(() => {
@@ -87,62 +93,20 @@ export default function StreamPanel() {
 		}
 	}, [partitions, user?.last_area_name]);
 
+	const closeVerification = useCallback(() => setVerification(null), []);
+	const completeVerification = useCallback(
+		(data: StreamCodeData) => {
+			setVerification(null);
+			setStreamCode(data);
+			setIsLive(true);
+			addLog("人脸认证通过，开播成功！");
+		},
+		[addLog, setIsLive, setStreamCode],
+	);
+
 	useEffect(() => {
-		if (!faceQrUrl) {
-			if (facePollRef.current) {
-				clearInterval(facePollRef.current);
-				facePollRef.current = null;
-			}
-			return;
-		}
-
-		let cancelled = false;
-		const doPoll = async () => {
-			if (cancelled) return;
-			try {
-				const res = await startLive(
-					parentArea || undefined,
-					subArea || undefined,
-				);
-				if (cancelled) return;
-				if (res.code === 0 && res.data) {
-					if (facePollRef.current) {
-						clearInterval(facePollRef.current);
-						facePollRef.current = null;
-					}
-					setFaceQrUrl(null);
-					setStreamCode(res.data);
-					setIsLive(true);
-					addLog("人脸认证通过，开播成功！");
-				} else if (res.code !== 60024 && res.code !== 60043) {
-					if (facePollRef.current) {
-						clearInterval(facePollRef.current);
-						facePollRef.current = null;
-					}
-					setFaceQrUrl(null);
-					addLog(`开播失败: ${res.msg || "未知错误"}`);
-				}
-			} catch (e) {
-				if (cancelled) return;
-				if (facePollRef.current) {
-					clearInterval(facePollRef.current);
-					facePollRef.current = null;
-				}
-				setFaceQrUrl(null);
-				addLog(`轮询开播失败: ${e}`);
-			}
-		};
-
-		doPoll();
-		facePollRef.current = setInterval(doPoll, 5000);
-		return () => {
-			cancelled = true;
-			if (facePollRef.current) {
-				clearInterval(facePollRef.current);
-				facePollRef.current = null;
-			}
-		};
-	}, [faceQrUrl, parentArea, subArea, setStreamCode, setIsLive, addLog]);
+		if (verification && verification.uid !== user?.uid) closeVerification();
+	}, [closeVerification, user?.uid, verification]);
 
 	const handleParentChange = (p: string) => {
 		setParentArea(p);
@@ -172,22 +136,30 @@ export default function StreamPanel() {
 	};
 
 	const handleStart = async () => {
-		if (facePollRef.current) {
-			clearInterval(facePollRef.current);
-			facePollRef.current = null;
+		if (starting || verification || isLive) return;
+		if (!user) {
+			addLog("请先扫码登录哔哩哔哩账号");
+			return;
 		}
+		const attempt = {
+			uid: user.uid,
+			parentArea: parentArea || undefined,
+			subArea: subArea || undefined,
+		};
+		setStarting(true);
 		addLog("开始获取推流码...");
 		try {
 			if (title.trim()) {
 				await updateSavedTitle(title);
 			}
 			const res = await startLive(
-				parentArea || undefined,
-				subArea || undefined,
+				attempt.parentArea,
+				attempt.subArea,
+				attempt.uid,
 			);
 			if (res.code === 60024 || res.code === 60043) {
-				setFaceQrUrl(res.qr || null);
-				addLog("需要人脸验证，请扫码完成认证");
+				setVerification({ ...attempt, qr: res.qr || undefined });
+				addLog("需要在哔哩哔哩客户端完成人脸认证");
 				return;
 			}
 			if (res.code !== 0) {
@@ -201,6 +173,8 @@ export default function StreamPanel() {
 			}
 		} catch (e) {
 			addLog(`开播失败: ${e}`);
+		} finally {
+			setStarting(false);
 		}
 	};
 
@@ -217,219 +191,187 @@ export default function StreamPanel() {
 	};
 
 	return (
-		<div className="flex-1 overflow-y-auto p-6 space-y-6">
-			{/* Title & Area */}
-			<section>
-				<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">
-					直播信息
-				</h2>
-				<div className="space-y-4">
-					<div>
-						<label
-							htmlFor="stream-title"
-							className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5"
-						>
-							标题
-						</label>
-						<div className="flex gap-2">
-							<input
-								id="stream-title"
-								type="text"
-								value={title}
-								onChange={(e) => setTitle(e.target.value)}
-								className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
-							/>
-							<button
-								type="button"
-								onClick={async () => {
-									try {
-										await updateSavedTitle(title);
-										addLog("标题已更新");
-									} catch (e) {
-										addLog(`更新标题失败: ${e}`);
-									}
-								}}
-								className="h-9 px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition"
+		<div className="min-w-0 flex-1 overflow-y-auto p-4 min-[720px]:p-6">
+			<div
+				className={`mx-auto grid gap-6 ${streamCode ? "max-w-6xl min-[960px]:grid-cols-2" : "max-w-3xl"}`}
+			>
+				<section className="min-w-0">
+					<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">
+						直播信息
+					</h2>
+					<div className="space-y-4">
+						<div>
+							<label
+								htmlFor="stream-title"
+								className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5"
 							>
-								更新
-							</button>
-						</div>
-					</div>
-
-					<div>
-						<label
-							htmlFor="stream-area"
-							className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5"
-						>
-							分区
-						</label>
-						<div className="flex gap-2">
-							<select
-								id="stream-area"
-								value={parentArea}
-								onChange={(e) => handleParentChange(e.target.value)}
-								className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
-							>
-								{Object.keys(partitions).map((p) => (
-									<option key={p} value={p}>
-										{p}
-									</option>
-								))}
-							</select>
-							<select
-								value={subArea}
-								onChange={(e) => setSubArea(e.target.value)}
-								className="flex-1 h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
-							>
-								{(partitions[parentArea] || []).map((s) => (
-									<option key={s} value={s}>
-										{s}
-									</option>
-								))}
-							</select>
-							<button
-								type="button"
-								onClick={handleUpdateArea}
-								disabled={!parentArea || !subArea}
-								className="h-9 px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
-							>
-								更新
-							</button>
-						</div>
-					</div>
-				</div>
-			</section>
-
-			{/* Stream Codes */}
-			{streamCode && (
-				<section>
-					<div className="flex items-center justify-between mb-3">
-						<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-							推流信息
-						</h2>
-						<select
-							value={selectedProtocol}
-							onChange={(e) =>
-								setSelectedProtocol(e.target.value as StreamProtocolType)
-							}
-							className="h-7 px-2 rounded-md bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[12px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
-						>
-							{PROTOCOL_OPTIONS.map((opt) => (
-								<option key={opt.value} value={opt.value}>
-									{opt.label}
-								</option>
-							))}
-						</select>
-					</div>
-					<div className="space-y-3">
-						<div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
-							<div className="flex items-center justify-between mb-1.5">
-								<span className="text-[12px] font-medium text-stone-500">
-									服务地址
-								</span>
+								标题
+							</label>
+							<div className="flex gap-2">
+								<input
+									id="stream-title"
+									type="text"
+									value={title}
+									onChange={(e) => setTitle(e.target.value)}
+									className="min-w-0 flex-1 h-11 min-[720px]:h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition"
+								/>
 								<button
 									type="button"
-									onClick={() =>
-										navigator.clipboard.writeText(
-											streamCode[selectedProtocol].addr,
-										)
-									}
-									className="flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 transition opacity-0 group-hover:opacity-100"
+									onClick={async () => {
+										try {
+											await updateSavedTitle(title);
+											addLog("标题已更新");
+										} catch (e) {
+											addLog(`更新标题失败: ${e}`);
+										}
+									}}
+									className="shrink-0 h-11 min-[720px]:h-9 px-3 min-[720px]:px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition"
 								>
-									<Copy size={12} />
-									复制
+									更新
 								</button>
 							</div>
-							<code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
-								{streamCode[selectedProtocol].addr}
-							</code>
 						</div>
-						<div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
-							<div className="flex items-center justify-between mb-1.5">
-								<span className="text-[12px] font-medium text-stone-500">
-									推流码
-								</span>
+
+						<div>
+							<label
+								htmlFor="stream-area"
+								className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5"
+							>
+								分区
+							</label>
+							<div className="flex gap-2">
+								<select
+									id="stream-area"
+									value={parentArea}
+									onChange={(e) => handleParentChange(e.target.value)}
+									className="min-w-0 flex-1 h-11 min-[720px]:h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
+								>
+									{Object.keys(partitions).map((p) => (
+										<option key={p} value={p}>
+											{p}
+										</option>
+									))}
+								</select>
+								<select
+									aria-label="子分区"
+									value={subArea}
+									onChange={(e) => setSubArea(e.target.value)}
+									className="min-w-0 flex-1 h-11 min-[720px]:h-9 px-3 rounded-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
+								>
+									{(partitions[parentArea] || []).map((s) => (
+										<option key={s} value={s}>
+											{s}
+										</option>
+									))}
+								</select>
 								<button
 									type="button"
-									onClick={() =>
-										navigator.clipboard.writeText(
-											streamCode[selectedProtocol].code,
-										)
-									}
-									className="flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 transition opacity-0 group-hover:opacity-100"
+									onClick={handleUpdateArea}
+									disabled={!parentArea || !subArea}
+									className="shrink-0 h-11 min-[720px]:h-9 px-3 min-[720px]:px-4 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
 								>
-									<Copy size={12} />
-									复制
+									更新
 								</button>
 							</div>
-							<code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
-								{streamCode[selectedProtocol].code}
-							</code>
 						</div>
+					</div>
+					{/* Actions */}
+					<div className="flex gap-3 pt-5">
+						<button
+							type="button"
+							onClick={handleStart}
+							disabled={isLive || starting || Boolean(verification)}
+							className="flex-1 h-11 min-[720px]:h-10 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
+						>
+							{starting ? "正在开播…" : "开始直播"}
+						</button>
+						<button
+							type="button"
+							onClick={handleStop}
+							disabled={!isLive}
+							className="flex-1 h-11 min-[720px]:h-10 rounded-lg bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] font-medium hover:bg-stone-200 dark:hover:bg-stone-800 transition disabled:opacity-50"
+						>
+							停止直播
+						</button>
 					</div>
 				</section>
-			)}
 
-			{/* Actions */}
-			<div className="flex gap-3 pt-2">
-				<button
-					type="button"
-					onClick={handleStart}
-					disabled={isLive}
-					className="flex-1 h-10 rounded-lg bg-[#D4652A] text-white text-[13px] font-medium hover:opacity-90 transition disabled:opacity-50"
-				>
-					开始直播
-				</button>
-				<button
-					type="button"
-					onClick={handleStop}
-					disabled={!isLive}
-					className="flex-1 h-10 rounded-lg bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px] font-medium hover:bg-stone-200 dark:hover:bg-stone-800 transition disabled:opacity-50"
-				>
-					停止直播
-				</button>
-			</div>
-
-			{/* Face Verification QR Modal */}
-			{faceQrUrl && (
-				<>
-					<div
-						className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-						onClick={() => setFaceQrUrl(null)}
-					/>
-					<div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-						<div
-							className="relative w-72 p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
-							onClick={(e) => e.stopPropagation()}
-						>
-							<button
-								type="button"
-								onClick={() => setFaceQrUrl(null)}
-								className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+				{/* Stream Codes */}
+				{streamCode && (
+					<section className="min-w-0">
+						<div className="flex items-center justify-between mb-3">
+							<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+								推流信息
+							</h2>
+							<select
+								value={selectedProtocol}
+								onChange={(e) =>
+									setSelectedProtocol(e.target.value as StreamProtocolType)
+								}
+								className="h-7 px-2 rounded-md bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[12px] focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition appearance-none"
 							>
-								<X size={14} />
-							</button>
-
-							<div className="text-center mb-4">
-								<h3 className="text-[15px] font-semibold text-stone-800 dark:text-stone-100">
-									人脸认证
-								</h3>
-								<p className="text-[11px] text-stone-400 mt-1">
-									请使用哔哩哔哩客户端扫码完成认证
-								</p>
+								{PROTOCOL_OPTIONS.map((opt) => (
+									<option key={opt.value} value={opt.value}>
+										{opt.label}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="space-y-3">
+							<div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
+								<div className="flex items-center justify-between mb-1.5">
+									<span className="text-[12px] font-medium text-stone-500">
+										服务地址
+									</span>
+									<button
+										type="button"
+										onClick={() =>
+											navigator.clipboard.writeText(
+												streamCode[selectedProtocol].addr,
+											)
+										}
+										className="flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+									>
+										<Copy size={12} />
+										复制
+									</button>
+								</div>
+								<code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
+									{streamCode[selectedProtocol].addr}
+								</code>
 							</div>
-
-							<div className="flex flex-col items-center gap-4">
-								<div className="p-3 bg-white rounded-xl border border-stone-100 shadow-sm">
-									<QRCodeSVG value={faceQrUrl} size={152} />
+							<div className="group p-4 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 transition">
+								<div className="flex items-center justify-between mb-1.5">
+									<span className="text-[12px] font-medium text-stone-500">
+										推流码
+									</span>
+									<button
+										type="button"
+										onClick={() =>
+											navigator.clipboard.writeText(
+												streamCode[selectedProtocol].code,
+											)
+										}
+										className="flex min-h-8 items-center gap-1 rounded-md px-2 text-xs text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+									>
+										<Copy size={12} />
+										复制
+									</button>
 								</div>
-								<div className="text-[11px] text-stone-400 text-center leading-relaxed">
-									扫码完成后将自动开播
-								</div>
+								<code className="block text-[12px] text-stone-600 dark:text-stone-400 font-mono break-all leading-relaxed">
+									{streamCode[selectedProtocol].code}
+								</code>
 							</div>
 						</div>
-					</div>
-				</>
+					</section>
+				)}
+			</div>
+			{verification && verification.uid === user?.uid && (
+				<FaceVerificationDialog
+					verification={verification}
+					onClose={closeVerification}
+					onSuccess={completeVerification}
+				/>
 			)}
 		</div>
 	);

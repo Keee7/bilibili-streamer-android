@@ -36,7 +36,7 @@ export default function AccountPanel() {
 	};
 
 	return (
-		<div className="flex-1 overflow-y-auto p-6 space-y-6">
+		<div className="min-h-0 flex-1 overflow-y-auto p-4 min-[720px]:p-6 space-y-6">
 			<section>
 				<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-3">
 					当前账户
@@ -51,7 +51,7 @@ export default function AccountPanel() {
 							referrerPolicy="no-referrer"
 							alt=""
 						/>
-						<div className="flex-1">
+						<div className="min-w-0 flex-1 break-words">
 							<div className="text-[14px] font-medium text-stone-800 dark:text-stone-100">
 								{user.uname}
 							</div>

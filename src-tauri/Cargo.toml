@@ -9,14 +9,13 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri = { version = "2", features = ["image-png", "macos-private-api"] }
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json", "cookies"] }
-tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "charset", "http2"] }
+tokio-tungstenite = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-directories = "5"
 anyhow = "1"
 thiserror = "1"
 tracing = "0.1"
@@ -32,13 +31,21 @@ prost = "0.13"
 http = "1"
 once_cell = "1"
 futures = "0.3.32"
-tauri-plugin-process = "2"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 objc = "0.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+directories = "5"
+reqwest = { version = "0.12", features = ["default-tls", "system-proxy"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
+tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-webpki-roots"] }
 
 [lib]
 name = "bilibili_streamer_lib"

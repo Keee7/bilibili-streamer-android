@@ -23,9 +23,13 @@ impl<'a> LiveSession<'a> {
         &self,
         p_name: Option<String>,
         s_name: Option<String>,
+        expected_uid: Option<u64>,
     ) -> Result<StartLiveResponse> {
         let mut config = self.state.config.lock().await;
         let mut session = self.state.session.lock().await;
+        if expected_uid.is_some() && session.uid != expected_uid {
+            anyhow::bail!("当前账号已切换，请重新开始直播");
+        }
         let mut live = self.state.live.lock().await;
         let result = live
             .start_live(&self.state.api, &mut session, &mut config, p_name, s_name)

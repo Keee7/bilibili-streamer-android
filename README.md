@@ -22,7 +22,7 @@
 - **桌面框架**: Tauri 2.x (Rust)
 - **前端**: React 18 + TypeScript + Vite + Tailwind CSS
 - **后端**: Rust (Tokio async runtime)
-- **目标平台**: macOS / Windows / Linux
+- **目标平台**: macOS / Windows / Linux / Android
 
 ## 下载安装
 
@@ -50,8 +50,8 @@
 
 ### 环境要求
 
-- **Rust**: 1.77.2+（建议通过 [rustup](https://rustup.rs/) 安装）
-- **Node.js**: 18+
+- **Rust**: 当前稳定版（建议通过 [rustup](https://rustup.rs/) 安装）
+- **Node.js**: 20.19+ 或 22.12+
 
 ### 开发模式
 
@@ -75,6 +75,24 @@ npm run tauri-build
 - **macOS**: `.dmg` / `.app`
 - **Windows**: `.msi` / `.exe`
 - **Linux**: `.AppImage`
+
+### Android
+
+安卓版支持 Android 7.0 及以上。界面按可用窗口宽度切换布局，窄屏使用底部导航，宽屏使用侧栏，平板横屏可并排查看直播设置和推流信息。
+
+准备 JDK 17、Android SDK Platform 36、Platform-Tools、Build-Tools 和 NDK 28.2.13676358，按 [Tauri 的 Android 环境说明](https://v2.tauri.app/start/prerequisites/#android) 配置 `JAVA_HOME`、`ANDROID_HOME`、`NDK_HOME`。Android 工程已包含在仓库中。
+
+在 Windows 上，请开启[开发人员模式](https://learn.microsoft.com/windows/advanced-settings/developer-mode)，以便 Tauri 在打包时创建原生库的符号链接。
+
+```bash
+rustup target add aarch64-linux-android
+npm install
+npm run tauri -- android build --debug --apk --target aarch64
+```
+
+调试 APK 位于 `src-tauri/gen/android/app/build/outputs/apk/` 下，可用 `adb install` 安装到 ARM64 手机或平板。也可以通过 `npm run tauri -- android dev` 在已连接的开发设备上运行。
+
+登录依然使用原项目的扫码流程。开播要求人脸认证时，安卓版会尝试在同一设备的哔哩哔哩大陆版或 HD 客户端打开认证页。请使用同一账号完成验证，返回本工具后会重新检查开播结果。客户端未安装、无法打开认证页时，可用另一台设备扫描二维码。推流端仍使用 RTMP 或 SRT 地址和推流码。
 
 ## 致谢
 

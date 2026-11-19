@@ -17,6 +17,25 @@ export interface UpdateInfo {
 	date?: string;
 }
 
+export const isAndroid = /Android/i.test(navigator.userAgent);
+
+export type FaceVerificationLaunch =
+	| "verificationPage"
+	| "appHome"
+	| "unavailable";
+
+export async function openFaceVerification(
+	url?: string,
+): Promise<FaceVerificationLaunch> {
+	const result = await invoke<{ status: FaceVerificationLaunch }>(
+		"open_face_verification",
+		{
+			url: url || null,
+		},
+	);
+	return result.status;
+}
+
 export async function checkUpdate(): Promise<UpdateInfo> {
 	const update = await check();
 	if (update) {
@@ -105,8 +124,9 @@ export async function updateArea(pName: string, sName: string): Promise<void> {
 export async function startLive(
 	pName?: string,
 	sName?: string,
+	expectedUid?: number,
 ): Promise<StartLiveResponse> {
-	return await invoke("start_live", { pName, sName });
+	return await invoke("start_live", { pName, sName, expectedUid });
 }
 
 export async function stopLive(): Promise<void> {

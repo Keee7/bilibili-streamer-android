@@ -7,7 +7,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLive, useUI, useUser } from "@/context/AppContext";
-import { clearSession, logout, openDanmakuFloat } from "@/hooks/useTauri";
+import {
+	clearSession,
+	isAndroid,
+	logout,
+	openDanmakuFloat,
+} from "@/hooks/useTauri";
 import LoginPanel from "./LoginPanel";
 
 interface SidebarProps {
@@ -19,6 +24,7 @@ const navItems = [
 	{ id: "stream", label: "推流设置", icon: RadioTower },
 	{ id: "danmaku", label: "弹幕监控", icon: MessageSquare },
 	{ id: "account", label: "账户管理", icon: User },
+	{ id: "settings", label: "设置", icon: Settings },
 ];
 
 export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
@@ -65,10 +71,15 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 	};
 
 	return (
-		<div className="w-52 bg-stone-100 dark:bg-[#221f22] border-r border-stone-300 dark:border-[#4a454d] flex flex-col shrink-0">
+		<div className="app-sidebar contents min-[720px]:flex min-[720px]:w-52 min-[720px]:flex-col min-[720px]:border-r border-stone-300 dark:border-[#4a454d] bg-stone-100 dark:bg-[#221f22]">
 			{/* User Card */}
-			<div ref={menuRef} className="relative p-3 mb-2">
-				<div
+			<div
+				ref={menuRef}
+				className="app-account relative min-w-0 p-2 min-[720px]:p-3 min-[720px]:mb-2"
+			>
+				<button
+					type="button"
+					aria-expanded={user ? showMenu : showLogin}
 					onClick={() => {
 						if (user) {
 							setShowMenu((v) => !v);
@@ -76,7 +87,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 							setShowLogin((v) => !v);
 						}
 					}}
-					className="flex items-center gap-2.5 p-2.5 rounded-lg transition cursor-pointer hover:bg-stone-200 dark:hover:bg-[#363236]"
+					className="flex w-full items-center gap-2.5 px-2.5 py-1.5 min-[720px]:py-2.5 text-left rounded-lg transition hover:bg-stone-200 dark:hover:bg-[#363236]"
 				>
 					<img
 						src={
@@ -94,7 +105,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 							{user ? `LV${user.level} · ${user.uid}` : "点击登录"}
 						</div>
 					</div>
-				</div>
+				</button>
 
 				{showMenu && user && (
 					<div className="absolute left-3 right-3 top-full mt-1 py-1 rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-lg z-20">
@@ -121,61 +132,52 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 			</div>
 
 			{/* Navigation */}
-			<nav className="flex-1 px-2 space-y-0.5">
+			<nav
+				aria-label="主导航"
+				className="app-navigation grid grid-cols-4 gap-1 border-t border-stone-200 dark:border-[#4a454d] bg-stone-100 dark:bg-[#221f22] p-1.5 min-[720px]:block min-[720px]:flex-1 min-[720px]:border-t-0 min-[720px]:px-2 min-[720px]:py-0 min-[720px]:space-y-0.5"
+			>
 				{navItems.map((item) => {
 					const isActive = activeTab === item.id;
 					return (
-						<button
-							type="button"
+						<div
 							key={item.id}
-							onClick={() => onTabChange(item.id)}
-							className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition ${
-								isActive
-									? "bg-stone-200 dark:bg-[#363236] text-stone-900 dark:text-stone-100"
-									: "text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-[#363236] hover:text-stone-900 dark:hover:text-stone-100"
-							}`}
+							className={`relative min-w-0 ${item.id === "settings" ? "min-[720px]:!mt-8" : ""}`}
 						>
-							<item.icon size={16} />
-							<span className="flex-1 text-left">{item.label}</span>
-							{item.id === "danmaku" && (
+							<button
+								type="button"
+								aria-current={isActive ? "page" : undefined}
+								onClick={() => onTabChange(item.id)}
+								className={`w-full min-h-11 flex flex-col items-center justify-center gap-1 px-1 rounded-lg text-xs font-medium transition min-[720px]:min-h-0 min-[720px]:flex-row min-[720px]:gap-3 min-[720px]:px-3 min-[720px]:py-2 min-[720px]:text-[13px] ${
+									isActive
+										? "bg-stone-200 dark:bg-[#363236] text-stone-900 dark:text-stone-100"
+										: "text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-[#363236] hover:text-stone-900 dark:hover:text-stone-100"
+								}`}
+							>
+								<item.icon size={16} />
+								<span className="min-[720px]:flex-1 min-[720px]:text-left">
+									{item.label}
+								</span>
+							</button>
+							{item.id === "danmaku" && isActive && !isAndroid && (
 								<button
 									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
+									aria-label="打开弹幕浮窗"
+									onClick={() => {
 										openDanmakuFloat().catch(() => {});
 									}}
-									className={`w-6 h-6 rounded flex items-center justify-center transition ${
-										isActive
-											? "text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-300 dark:hover:bg-[#4a454d]"
-											: "invisible"
-									}`}
+									className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded hidden min-[720px]:flex items-center justify-center transition text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-300 dark:hover:bg-[#4a454d]"
 									title="浮窗"
 								>
 									<LayoutPanelTop size={13} />
 								</button>
 							)}
-						</button>
+						</div>
 					);
 				})}
-
-				<div className="pt-4 mt-4">
-					<button
-						type="button"
-						onClick={() => onTabChange("settings")}
-						className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition ${
-							activeTab === "settings"
-								? "bg-stone-200 dark:bg-[#363236] text-stone-900 dark:text-stone-100"
-								: "text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-[#363236] hover:text-stone-900 dark:hover:text-stone-100"
-						}`}
-					>
-						<Settings size={16} />
-						<span>设置</span>
-					</button>
-				</div>
 			</nav>
 
 			{/* Live Status */}
-			<div className="px-3 pt-2">
+			<div className="hidden min-[720px]:block px-3 pt-2">
 				<div className="flex items-center gap-2 px-3 py-2">
 					<span
 						className={`w-1.5 h-1.5 rounded-full ${isLive ? "bg-[#34C759] animate-pulse" : "bg-stone-300 dark:bg-stone-600"}`}

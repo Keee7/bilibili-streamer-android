@@ -5,6 +5,7 @@ import {
 	getAppConfig,
 	getVersion,
 	installUpdate,
+	isAndroid,
 	setAppConfig,
 } from "@/hooks/useTauri";
 
@@ -22,6 +23,7 @@ export default function SettingsPanel() {
 		getVersion()
 			.then(setVersion)
 			.catch(() => {});
+		if (isAndroid) return;
 		getAppConfig()
 			.then((cfg) => {
 				if (cfg.disable_dmabuf_renderer != null) {
@@ -75,14 +77,14 @@ export default function SettingsPanel() {
 	};
 
 	return (
-		<div className="flex-1 overflow-y-auto p-6">
-			<div className="max-w-2xl space-y-8">
+		<div className="flex-1 overflow-y-auto p-4 min-[720px]:p-6">
+			<div className="mx-auto max-w-2xl space-y-8">
 				<section>
 					<h2 className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-5">
 						偏好设置
 					</h2>
 					<div className="space-y-1">
-						{isShow ? (
+						{isShow && (
 							<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
 								<div>
 									<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">
@@ -105,28 +107,28 @@ export default function SettingsPanel() {
 									/>
 								</button>
 							</div>
-						) : (
-							""
 						)}
-						<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
-							<div>
-								<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">
-									关闭时最小化到托盘
+						{!isAndroid && (
+							<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
+								<div>
+									<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">
+										关闭时最小化到托盘
+									</div>
+									<div className="text-[12px] text-stone-400 mt-0.5">
+										点击关闭按钮将隐藏到系统托盘
+									</div>
 								</div>
-								<div className="text-[12px] text-stone-400 mt-0.5">
-									点击关闭按钮将隐藏到系统托盘
-								</div>
+								<button
+									type="button"
+									onClick={toggleMinToTray}
+									className={`relative w-10 h-6 rounded-full transition ${minToTray ? "bg-[#34C759]" : "bg-stone-300 dark:bg-stone-600"}`}
+								>
+									<span
+										className={`absolute top-1 w-4 h-4 rounded-full bg-white transition ${minToTray ? "left-5" : "left-1"}`}
+									/>
+								</button>
 							</div>
-							<button
-								type="button"
-								onClick={toggleMinToTray}
-								className={`relative w-10 h-6 rounded-full transition ${minToTray ? "bg-[#34C759]" : "bg-stone-300 dark:bg-stone-600"}`}
-							>
-								<span
-									className={`absolute top-1 w-4 h-4 rounded-full bg-white transition ${minToTray ? "left-5" : "left-1"}`}
-								/>
-							</button>
-						</div>
+						)}
 						<div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-800">
 							<div>
 								<div className="text-[13px] font-medium text-stone-800 dark:text-stone-200">
@@ -156,24 +158,26 @@ export default function SettingsPanel() {
 						<span className="text-[12px] text-stone-500">版本</span>
 						<span className="text-[12px] text-stone-400">{version}</span>
 					</div>
-					<div className="flex items-center justify-between py-2">
-						<span className="text-[12px] text-stone-500">更新</span>
-						<div className="flex items-center gap-2">
-							{updateStatus && (
-								<span className="text-[12px] text-stone-400">
-									{updateStatus}
-								</span>
-							)}
-							<button
-								type="button"
-								onClick={handleCheckUpdate}
-								disabled={checkingUpdate}
-								className="text-[12px] px-2.5 py-1 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-50 transition"
-							>
-								{checkingUpdate ? "检查中..." : "检查更新"}
-							</button>
+					{!isAndroid && (
+						<div className="flex items-center justify-between py-2">
+							<span className="text-[12px] text-stone-500">更新</span>
+							<div className="flex items-center gap-2">
+								{updateStatus && (
+									<span className="text-[12px] text-stone-400">
+										{updateStatus}
+									</span>
+								)}
+								<button
+									type="button"
+									onClick={handleCheckUpdate}
+									disabled={checkingUpdate}
+									className="text-[12px] px-2.5 py-1 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-50 transition"
+								>
+									{checkingUpdate ? "检查中..." : "检查更新"}
+								</button>
+							</div>
 						</div>
-					</div>
+					)}
 				</section>
 			</div>
 		</div>

@@ -10,10 +10,7 @@ export default function ConsolePanel({ open }: ConsolePanelProps) {
 	if (!open) return null;
 
 	return (
-		<div
-			className="border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 flex flex-col shrink-0"
-			style={{ height: 120 }}
-		>
+		<div className="h-[120px] max-h-[30vh] border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 flex flex-col shrink-0">
 			<div className="flex items-center justify-between px-4 h-7 border-b border-stone-200 dark:border-stone-800">
 				<span className="text-[11px] font-medium text-stone-500 uppercase tracking-wider">
 					Console

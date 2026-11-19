@@ -141,7 +141,8 @@ export default function DanmakuStreamView({
 	const handleScroll = () => {
 		const el = scrollRef.current;
 		if (!el) return;
-		isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+		isAtBottomRef.current =
+			el.scrollHeight - el.scrollTop - el.clientHeight < 30;
 	};
 
 	const handleSend = async () => {
@@ -158,7 +159,9 @@ export default function DanmakuStreamView({
 		}
 	};
 
-	const controlSize = compact ? "w-8 h-8" : "w-9 h-9";
+	const controlSize = compact
+		? "w-8 h-8"
+		: "w-11 h-11 min-[720px]:w-9 min-[720px]:h-9";
 	const iconSize = compact ? 14 : 15;
 
 	return (
@@ -166,7 +169,7 @@ export default function DanmakuStreamView({
 			<div
 				ref={scrollRef}
 				onScroll={handleScroll}
-				className={`flex-1 overflow-y-auto space-y-1 ${compact ? "px-4 pt-8 pb-2" : "px-6 py-3"}`}
+				className={`flex-1 overflow-y-auto space-y-1 ${compact ? "px-4 pt-8 pb-2" : "px-4 min-[720px]:px-6 py-3"}`}
 			>
 				{messages.map((item) => (
 					<DanmakuStreamItem
@@ -181,7 +184,7 @@ export default function DanmakuStreamView({
 				className={`shrink-0 ${
 					compact
 						? "px-4 py-3 border-t border-stone-200/40 dark:border-stone-700/40"
-						: "px-6 py-4"
+						: "px-4 min-[720px]:px-6 py-3"
 				}`}
 			>
 				<div className="flex gap-2">
@@ -196,10 +199,10 @@ export default function DanmakuStreamView({
 							}
 						}}
 						placeholder="发送弹幕..."
-						className={`flex-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition ${
+						className={`flex-1 min-w-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400/30 transition ${
 							compact
 								? "h-8 px-2.5 bg-white/70 dark:bg-stone-900/70 border border-stone-200/60 dark:border-stone-800/60 text-[12px]"
-								: "h-9 px-3 bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px]"
+								: "h-11 min-[720px]:h-9 px-3 bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-[13px]"
 						}`}
 					/>
 					<button
