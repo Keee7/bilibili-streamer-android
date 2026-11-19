@@ -1,200 +1,240 @@
-import { RotateCcw, X } from "lucide-react";
+import { X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { useUI, useUser } from "@/context/AppContext";
 import {
 	getLoginQrcode,
+	isAndroid,
+	openBilibiliLogin,
 	pollLoginStatus,
 	refreshCurrentUser,
 } from "@/hooks/useTauri";
+import type { QrCodeData } from "@/types/api";
 
 interface LoginPanelProps {
 	onClose: () => void;
 }
 
+type LoginStatus =
+	| "loading"
+	| "waiting"
+	| "confirming"
+	| "finishing"
+	| "expired"
+	| "unavailable"
+	| "error";
+
+const statusText: Record<LoginStatus, string> = {
+	loading: isAndroid ? "正在打开哔哩哔哩…" : "正在获取二维码…",
+	waiting: isAndroid
+		? "请在哔哩哔哩客户端确认登录，然后返回这里。"
+		: "请使用哔哩哔哩客户端扫码登录。",
+	confirming: isAndroid
+		? "等待你在哔哩哔哩客户端确认登录。"
+		: "已扫码，请在手机上确认登录。",
+	finishing: "登录已确认，正在获取账号信息…",
+	expired: isAndroid ? "登录请求已过期。" : "二维码已过期。",
+	unavailable:
+		"无法打开登录确认页，请检查是否安装了最新版哔哩哔哩或哔哩哔哩 HD。",
+	error: "登录失败。",
+};
+
 export default function LoginPanel({ onClose }: LoginPanelProps) {
 	const { setUser } = useUser();
 	const { addLog } = useUI();
-	const [qrUrl, setQrUrl] = useState("");
-	const [qrKey, setQrKey] = useState("");
-	const [status, setStatus] = useState<
-		"loading" | "waiting" | "scanned" | "expired" | "error"
-	>("loading");
+	const [attempt, setAttempt] = useState<QrCodeData | null>(null);
+	const [status, setStatus] = useState<LoginStatus>("loading");
 	const [errorMsg, setErrorMsg] = useState("");
-	const mountedRef = useRef(true);
+	const [reopening, setReopening] = useState(false);
+	const dialogRef = useRef<HTMLDialogElement>(null);
 
 	useEffect(() => {
-		mountedRef.current = true;
-		setStatus("loading");
-		setErrorMsg("");
-		getLoginQrcode()
-			.then((data) => {
-				if (!mountedRef.current) return;
-				setQrUrl(data.url);
-				setQrKey(data.qrcode_key);
-				setStatus("waiting");
-			})
-			.catch((e) => {
-				if (!mountedRef.current) return;
-				setStatus("error");
-				setErrorMsg(e instanceof Error ? e.message : String(e));
-			});
-		return () => {
-			mountedRef.current = false;
-		};
+		const dialog = dialogRef.current;
+		dialog?.showModal();
+		return () => dialog?.close();
 	}, []);
 
 	useEffect(() => {
-		if (!qrKey) return;
-		mountedRef.current = true;
-		let interval: ReturnType<typeof setInterval>;
-
-		const poll = async () => {
-			if (!mountedRef.current) return;
+		if (status !== "loading") return;
+		let cancelled = false;
+		async function beginLogin() {
 			try {
-				const res = await pollLoginStatus(qrKey);
-				if (!mountedRef.current) return;
-				if (res.code === 0) {
-					clearInterval(interval);
-					setStatus("scanned");
-					addLog("扫码成功，正在获取用户信息...");
-					try {
-						const user = await refreshCurrentUser();
-						if (!mountedRef.current) return;
-						setUser(user);
-						addLog(`登录成功: ${user.uname}`);
-						onClose();
-					} catch (e) {
-						if (!mountedRef.current) return;
-						setStatus("error");
-						setErrorMsg(`获取用户信息失败: ${e}`);
-					}
-				} else if (res.code === 86038) {
-					clearInterval(interval);
-					setStatus("expired");
-				} else if (res.code === 86090) {
-					setStatus("scanned");
-				} else {
-					setStatus("waiting");
-				}
-			} catch (e) {
-				if (!mountedRef.current) return;
-				clearInterval(interval);
-				setStatus("error");
-				setErrorMsg(e instanceof Error ? e.message : String(e));
-			}
-		};
+				const next = await getLoginQrcode();
+				if (cancelled) return;
 
-		poll();
-		interval = setInterval(poll, 3000);
+				if (isAndroid) {
+					if (document.hidden) throw new Error("请返回本工具后重试登录。");
+					const opened = await openBilibiliLogin(next);
+					if (cancelled) return;
+					if (!opened) {
+						setStatus("unavailable");
+						return;
+					}
+				}
+
+				setAttempt(next);
+				setStatus("waiting");
+			} catch (cause) {
+				if (cancelled) return;
+				setStatus("error");
+				setErrorMsg(cause instanceof Error ? cause.message : String(cause));
+			}
+		}
+		void beginLogin();
 		return () => {
-			mountedRef.current = false;
-			clearInterval(interval);
+			cancelled = true;
 		};
-	}, [qrKey, addLog, setUser, onClose]);
+	}, [status]);
 
 	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
-		};
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [onClose]);
+		if (!attempt) return;
+		const key = attempt.qrcode_key;
+		let stopped = false;
+		let inFlight = false;
+		let timer: number | undefined;
 
-	const handleRefresh = () => {
-		mountedRef.current = true;
+		async function poll() {
+			if (stopped || inFlight || (isAndroid && document.hidden)) return;
+			window.clearTimeout(timer);
+			inFlight = true;
+
+			try {
+				const { code } = await pollLoginStatus(key);
+				if (stopped) return;
+
+				switch (code) {
+					case 0: {
+						setStatus("finishing");
+						const user = await refreshCurrentUser();
+						if (stopped) return;
+						stopped = true;
+						setUser(user);
+						addLog(`登录成功：${user.uname}`);
+						onClose();
+						return;
+					}
+					case 86038:
+						stopped = true;
+						setStatus("expired");
+						return;
+					case 86090:
+						setStatus("confirming");
+						break;
+					case 86101:
+						setStatus("waiting");
+						break;
+					default:
+						throw new Error(`哔哩哔哩返回登录状态 ${code}，请重试。`);
+				}
+				timer = window.setTimeout(poll, 3000);
+			} catch (cause) {
+				if (stopped) return;
+				stopped = true;
+				setStatus("error");
+				setErrorMsg(cause instanceof Error ? cause.message : String(cause));
+			} finally {
+				inFlight = false;
+			}
+		}
+
+		void poll();
+		if (isAndroid) {
+			document.addEventListener("visibilitychange", poll);
+			window.addEventListener("focus", poll);
+		}
+		return () => {
+			stopped = true;
+			window.clearTimeout(timer);
+			document.removeEventListener("visibilitychange", poll);
+			window.removeEventListener("focus", poll);
+		};
+	}, [addLog, attempt, onClose, setUser]);
+
+	const retry = () => {
+		setAttempt(null);
 		setStatus("loading");
 		setErrorMsg("");
-		getLoginQrcode()
-			.then((data) => {
-				if (!mountedRef.current) return;
-				setQrUrl(data.url);
-				setQrKey(data.qrcode_key);
-				setStatus("waiting");
-			})
-			.catch((e) => {
-				if (!mountedRef.current) return;
-				setStatus("error");
-				setErrorMsg(e instanceof Error ? e.message : String(e));
-			});
 	};
 
+	const reopen = async () => {
+		if (!attempt || reopening) return;
+		setReopening(true);
+		setErrorMsg("");
+		try {
+			if (!(await openBilibiliLogin(attempt))) {
+				setErrorMsg(statusText.unavailable);
+			}
+		} catch (cause) {
+			setErrorMsg(cause instanceof Error ? cause.message : String(cause));
+		} finally {
+			setReopening(false);
+		}
+	};
+
+	const awaitingConfirmation = status === "waiting" || status === "confirming";
+
 	return (
-		<>
-			<div
-				className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-				onClick={onClose}
-			/>
-			<div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-				<div
-					className="relative w-72 max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] overflow-y-auto p-6 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl pointer-events-auto"
-					onClick={(e) => e.stopPropagation()}
+		<dialog
+			ref={dialogRef}
+			aria-labelledby="login-title"
+			onCancel={(event) => {
+				event.preventDefault();
+				if (status !== "finishing") onClose();
+			}}
+			className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-xs max-h-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 p-5 text-stone-800 dark:text-stone-100 shadow-2xl backdrop:bg-black/50"
+		>
+			<header className="flex items-center justify-between gap-2">
+				<h3 id="login-title" className="text-base font-semibold">
+					{isAndroid ? "哔哩哔哩登录" : "扫码登录"}
+				</h3>
+				<button
+					type="button"
+					onClick={onClose}
+					disabled={status === "finishing"}
+					aria-label="关闭登录"
+					className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50"
 				>
-					<button
-						type="button"
-						onClick={onClose}
-						className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-					>
-						<X size={14} />
-					</button>
-
-					<div className="text-center mb-4">
-						<h3 className="text-[15px] font-semibold text-stone-800 dark:text-stone-100">
-							扫码登录
-						</h3>
-						<p className="text-[11px] text-stone-400 mt-1">
-							{status === "waiting" && "请使用哔哩哔哩客户端扫码登录"}
-							{status === "scanned" && "已扫码，请在手机上确认登录"}
-							{status === "expired" && "二维码已过期"}
-							{status === "error" && "登录出错"}
-							{status === "loading" && "正在获取二维码..."}
-						</p>
-					</div>
-
-					<div className="flex flex-col items-center gap-4">
-						{status === "loading" && (
-							<div className="w-40 h-40 flex items-center justify-center">
-								<div className="w-5 h-5 border-2 border-stone-300 dark:border-stone-600 border-t-stone-800 dark:border-t-stone-200 rounded-full animate-spin" />
-							</div>
-						)}
-
-						{(status === "waiting" || status === "scanned") && qrUrl && (
-							<div
-								className={`p-3 bg-white rounded-xl border border-stone-100 shadow-sm transition-opacity ${status === "scanned" ? "opacity-60" : ""}`}
-							>
-								<QRCodeSVG value={qrUrl} size={152} />
-							</div>
-						)}
-
-						{status === "expired" && (
-							<div className="w-40 h-40 flex flex-col items-center justify-center gap-2">
-								<span className="text-[12px] text-stone-400">二维码已过期</span>
-								<button
-									type="button"
-									onClick={handleRefresh}
-									className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[12px] bg-[#D4652A] text-white hover:opacity-90 transition"
-								>
-									<RotateCcw size={12} />
-									刷新二维码
-								</button>
-							</div>
-						)}
-
-						{status === "error" && (
-							<div className="w-40 h-40 flex items-center justify-center px-2">
-								<span className="text-[12px] text-red-500 text-center leading-relaxed">
-									{errorMsg}
-								</span>
-							</div>
-						)}
-
-						<div className="text-[11px] text-stone-400 text-center leading-relaxed min-h-[1rem]">
-							{status === "waiting" && "打开哔哩哔哩 App → 我的 → 扫一扫"}
-							{status === "scanned" && "请在手机上点击确认登录"}
-						</div>
-					</div>
+					<X size={18} />
+				</button>
+			</header>
+			<p className="text-sm text-stone-600 dark:text-stone-400" role="status">
+				{statusText[status]}
+			</p>
+			{!isAndroid && awaitingConfirmation && attempt && (
+				<div className="mx-auto mt-4 w-fit rounded-lg bg-white p-3">
+					<QRCodeSVG value={attempt.url} size={152} title="登录二维码" />
 				</div>
-			</div>
-		</>
+			)}
+			{errorMsg && (
+				<p
+					role="alert"
+					className="mt-3 break-words text-sm text-red-600 dark:text-red-400"
+				>
+					{errorMsg}
+				</p>
+			)}
+			{isAndroid && awaitingConfirmation && (
+				<button
+					type="button"
+					onClick={reopen}
+					disabled={reopening}
+					className="mt-4 w-full min-h-11 rounded-lg border border-stone-200 dark:border-stone-700 px-3 text-sm disabled:opacity-50"
+				>
+					{reopening ? "正在打开…" : "再次打开哔哩哔哩"}
+				</button>
+			)}
+			{(status === "expired" ||
+				status === "unavailable" ||
+				status === "error") && (
+				<button
+					type="button"
+					onClick={retry}
+					disabled={reopening}
+					className="mt-4 w-full min-h-11 rounded-lg bg-[#D4652A] px-3 text-sm font-medium text-white disabled:opacity-50"
+				>
+					{isAndroid ? "重试登录" : "刷新二维码"}
+				</button>
+			)}
+		</dialog>
 	);
 }

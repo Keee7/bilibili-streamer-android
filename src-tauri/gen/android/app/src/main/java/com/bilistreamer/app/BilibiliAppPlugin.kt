@@ -16,6 +16,25 @@ private const val VERIFICATION_PATH = "/blackboard/live/face-auth-middle.html"
 @TauriPlugin
 class BilibiliAppPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
+    fun openLogin(invoke: Invoke) {
+        val args = invoke.getArgs()
+        val page = Uri.parse(args.optString("url"))
+        val key = args.optString("key")
+        val isLoginPage = when (page.encodedAuthority) {
+            "account.bilibili.com" -> page.encodedPath == "/h5/account-h5/auth/scan-web"
+            "passport.bilibili.com" -> page.encodedPath == "/h5-app/passport/login/scan"
+            else -> false
+        }
+        if (page.scheme != "https" || !isLoginPage || key.isBlank() ||
+            page.getQueryParameters("qrcode_key") != listOf(key)
+        ) {
+            invoke.reject("哔哩哔哩返回了无法识别的登录链接")
+            return
+        }
+        invoke.resolve(JSObject().apply { put("opened", openBilibiliPage(page)) })
+    }
+
+    @Command
     fun openFaceVerification(invoke: Invoke) {
         val verificationPage = Uri.parse(invoke.getArgs().optString("url"))
         val status = when {
@@ -33,6 +52,10 @@ class BilibiliAppPlugin(private val activity: Activity) : Plugin(activity) {
             return false
         }
 
+        return openBilibiliPage(page)
+    }
+
+    private fun openBilibiliPage(page: Uri): Boolean {
         val inAppPage = Uri.Builder()
             .scheme("bilibili")
             .authority("browser")

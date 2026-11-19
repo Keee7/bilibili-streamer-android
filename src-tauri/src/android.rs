@@ -38,3 +38,20 @@ pub async fn open_face_verification(
         .await
         .map_err(|e| e.to_string())
 }
+
+#[derive(Deserialize, Serialize)]
+pub struct LoginLaunchResult {
+    opened: bool,
+}
+
+#[tauri::command]
+pub async fn open_bilibili_login(
+    url: String,
+    key: String,
+    app: State<'_, BilibiliApp>,
+) -> Result<LoginLaunchResult, String> {
+    app.0
+        .run_mobile_plugin_async("openLogin", serde_json::json!({ "url": url, "key": key }))
+        .await
+        .map_err(|e| e.to_string())
+}

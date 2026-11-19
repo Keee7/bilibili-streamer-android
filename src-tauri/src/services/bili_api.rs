@@ -138,7 +138,10 @@ impl BiliApi {
             .query(&[("qrcode_key", key)])
             .headers(self.headers())
             .send()
-            .await?;
+            .await
+            .map_err(reqwest::Error::without_url)?
+            .error_for_status()
+            .map_err(reqwest::Error::without_url)?;
 
         let mut cookies = HashMap::new();
         for cookie_hdr in resp.headers().get_all("set-cookie") {
@@ -151,7 +154,7 @@ impl BiliApi {
             }
         }
 
-        let json: Value = resp.json().await?;
+        let json: Value = resp.json().await.map_err(reqwest::Error::without_url)?;
         let code = json["data"]["code"].as_i64().unwrap_or(-1) as i32;
         let message = json["data"]["message"].as_str().unwrap_or("").to_string();
         Ok((code, message, cookies))

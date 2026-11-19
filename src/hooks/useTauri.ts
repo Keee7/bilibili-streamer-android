@@ -81,6 +81,14 @@ export async function getLoginQrcode(): Promise<QrCodeData> {
 	return await invoke("get_login_qrcode");
 }
 
+export async function openBilibiliLogin(attempt: QrCodeData): Promise<boolean> {
+	const { opened } = await invoke<{ opened: boolean }>("open_bilibili_login", {
+		url: attempt.url,
+		key: attempt.qrcode_key,
+	});
+	return opened;
+}
+
 export async function pollLoginStatus(key: string): Promise<LoginResult> {
 	return await invoke("poll_login_status", { key });
 }

@@ -13,6 +13,9 @@ impl AuthService {
     pub async fn poll_login_status(api: &BiliApi, key: &str) -> Result<LoginResult> {
         let (code, _message, cookies) = api.poll_passport_qrcode(key).await?;
         if code == 0 {
+            if cookies.get("SESSDATA").is_none_or(String::is_empty) {
+                anyhow::bail!("哔哩哔哩已确认登录，但未返回有效会话，请重试");
+            }
             let csrf = cookies
                 .get("bili_jct")
                 .cloned()

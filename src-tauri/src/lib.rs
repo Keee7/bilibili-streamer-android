@@ -121,6 +121,8 @@ pub fn run() {
             commands::config::get_version,
             #[cfg(target_os = "android")]
             android::open_face_verification,
+            #[cfg(target_os = "android")]
+            android::open_bilibili_login,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

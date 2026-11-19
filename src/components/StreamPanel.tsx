@@ -138,7 +138,7 @@ export default function StreamPanel() {
 	const handleStart = async () => {
 		if (starting || verification || isLive) return;
 		if (!user) {
-			addLog("请先扫码登录哔哩哔哩账号");
+			addLog("请先登录哔哩哔哩账号");
 			return;
 		}
 		const attempt = {

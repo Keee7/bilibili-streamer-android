@@ -5,7 +5,7 @@ import {
 	Settings,
 	User,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLive, useUI, useUser } from "@/context/AppContext";
 import {
 	clearSession,
@@ -34,6 +34,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 	const [showLogin, setShowLogin] = useState(false);
 	const [showMenu, setShowMenu] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const closeLogin = useCallback(() => setShowLogin(false), []);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -126,9 +127,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 					</div>
 				)}
 
-				{showLogin && !user && (
-					<LoginPanel onClose={() => setShowLogin(false)} />
-				)}
+				{showLogin && !user && <LoginPanel onClose={closeLogin} />}
 			</div>
 
 			{/* Navigation */}
