@@ -28,13 +28,13 @@
 
 ### macOS
 
-1. 前往 [Releases](https://github.com/Zeppelinpp/bilibili-streamer/releases/latest) 页面下载最新版 `.dmg`；
+1. 前往 [Releases](https://github.com/Keee7/bilibili-streamer-android/releases/latest) 页面下载最新版 `.dmg`；
 2. 双击打开 `.dmg`，将 `Bilibili-Streamer.app` 拖入 **应用程序** 文件夹；
 3. 首次运行时若提示"无法打开"，前往 **系统设置 → 隐私与安全性**，点击 **仍要打开**。
 
 ### Windows & Linux
 
-1. 前往 [Releases](https://github.com/Zeppelinpp/bilibili-streamer/releases/latest) 页面下载对应平台的安装包（Windows 为 `.msi` 或 `.exe`，Linux 为 `.AppImage`）；
+1. 前往 [Releases](https://github.com/Keee7/bilibili-streamer-android/releases/latest) 页面下载对应平台的安装包（Windows 为 `.msi` 或 `.exe`，Linux 为 `.AppImage`）；
 2. 按系统提示完成安装，或右键 `.AppImage` 选择 **属性 → 允许作为程序执行** 后双击运行。
 
 ## 使用教程
@@ -95,6 +95,19 @@ npm run tauri -- android build --debug --apk --target aarch64
 在安卓端点击头像登录时，工具会在同一设备上尝试打开哔哩哔哩大陆版或 HD 客户端的登录确认页。使用已登录的哔哩哔哩账号确认后，返回工具即可完成登录。
 
 开播要求人脸认证时，安卓版会在哔哩哔哩客户端打开认证页。请使用同一账号完成验证，返回本工具后会重新检查开播结果。客户端未安装、无法打开认证页时，可用另一台设备扫描人脸认证二维码。推流端仍使用 RTMP 或 SRT 地址和推流码。
+
+### CI 和发布签名
+
+推送到 `master` 或发起 Pull Request 时，GitHub Actions 会构建前端。手动运行 **CI and Release** 会由 CI 构建、签名并校验 ARM64 APK，可从运行记录的 Artifacts 下载。推送版本标签后，安卓 APK 和桌面安装包全部构建成功才会发布 Release。标签版本须与 `package.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 一致。
+
+| Actions Secret | 用途 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Android 发布 keystore 文件的 Base64 内容 |
+| `ANDROID_STORE_PASSWORD` | Android keystore 密码 |
+| `TAURI_SIGNING_PRIVATE_KEY` | 与 `tauri.conf.json` 中公钥配对的桌面更新签名私钥 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 桌面更新签名私钥的密码 |
+
+Android 密钥别名默认为 `bilibili-streamer`，可通过 Actions 变量 `ANDROID_KEY_ALIAS` 指定。如果密钥密码和 keystore 密码不同，另设 `ANDROID_KEY_PASSWORD` Secret。
 
 ## 致谢
 
